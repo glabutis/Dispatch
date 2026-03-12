@@ -46,7 +46,7 @@ jobs:
       - name: Build with PyInstaller
         run: |
           pyinstaller \
-            --name OSCApp \
+            --name Dispatch \
             --noconfirm \
             --onedir \
             --collect-all PySide6 \
@@ -62,41 +62,41 @@ jobs:
 
       - name: Assemble AppDir
         run: |
-          APPDIR="dist/OSCApp.AppDir"
+          APPDIR="dist/Dispatch.AppDir"
           mkdir -p "$APPDIR/usr/bin"
-          cp -r dist/OSCApp/. "$APPDIR/usr/bin/"
+          cp -r dist/Dispatch/. "$APPDIR/usr/bin/"
 
           cat > "$APPDIR/AppRun" <<'EOF'
           #!/usr/bin/env bash
           HERE="$(dirname "$(readlink -f "$0")")"
-          exec "$HERE/usr/bin/OSCApp" "$@"
+          exec "$HERE/usr/bin/Dispatch" "$@"
           EOF
           chmod +x "$APPDIR/AppRun"
 
-          cat > "$APPDIR/OSCApp.desktop" <<EOF
+          cat > "$APPDIR/Dispatch.desktop" <<EOF
           [Desktop Entry]
-          Name=OSCApp
-          Exec=OSCApp
-          Icon=OSCApp
+          Name=Dispatch
+          Exec=Dispatch
+          Icon=Dispatch
           Type=Application
           Categories=Utility;
           Comment=Map slide remote keystrokes to OSC commands
           EOF
 
-          cp assets/icon.png "$APPDIR/OSCApp.png"
+          cp assets/icon.png "$APPDIR/Dispatch.png"
 
       - name: Build AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          .build-tools/appimagetool dist/OSCApp.AppDir "dist/OSCApp-${VERSION}-x86_64.AppImage"
+          .build-tools/appimagetool dist/Dispatch.AppDir "dist/Dispatch-${VERSION}-x86_64.AppImage"
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4.6.0
         with:
           name: linux-appimage
-          path: dist/OSCApp-*.AppImage
+          path: dist/Dispatch-*.AppImage
 
   # ── macOS DMG ───────────────────────────────────────────────────────────────
   build-macos:
@@ -121,16 +121,16 @@ jobs:
 
       - name: Generate .icns icon
         run: |
-          iconutil -c icns assets/OSCApp.iconset -o assets/icon.icns
+          iconutil -c icns assets/Dispatch.iconset -o assets/icon.icns
 
       - name: Build with PyInstaller
         run: |
           pyinstaller \
-            --name OSCApp \
+            --name Dispatch \
             --noconfirm \
             --onedir \
             --windowed \
-            --osx-bundle-identifier com.oscapp.OSCApp \
+            --osx-bundle-identifier com.dispatch.Dispatch \
             --collect-all PySide6 \
             --icon assets/icon.icns \
             main.py
@@ -139,35 +139,35 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           create-dmg \
-            --volname "OSCApp" \
+            --volname "Dispatch" \
             --volicon "assets/icon.icns" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 128 \
-            --icon "OSCApp.app" 150 185 \
-            --hide-extension "OSCApp.app" \
+            --icon "Dispatch.app" 150 185 \
+            --hide-extension "Dispatch.app" \
             --app-drop-link 450 185 \
-            "dist/OSCApp-${VERSION}.dmg" \
-            "dist/OSCApp.app" \
+            "dist/Dispatch-${VERSION}.dmg" \
+            "dist/Dispatch.app" \
           || true  # create-dmg exits non-zero even on success sometimes
 
           # Fallback to hdiutil if create-dmg didn't produce the file
-          if [[ ! -f "dist/OSCApp-${VERSION}.dmg" ]]; then
+          if [[ ! -f "dist/Dispatch-${VERSION}.dmg" ]]; then
             STAGING=$(mktemp -d)
-            cp -R dist/OSCApp.app "$STAGING/"
+            cp -R dist/Dispatch.app "$STAGING/"
             ln -s /Applications "$STAGING/Applications"
             hdiutil create \
-              -volname "OSCApp" \
+              -volname "Dispatch" \
               -srcfolder "$STAGING" \
               -ov -format UDZO \
-              "dist/OSCApp-${VERSION}.dmg"
+              "dist/Dispatch-${VERSION}.dmg"
           fi
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4.6.0
         with:
           name: macos-dmg
-          path: dist/OSCApp-*.dmg
+          path: dist/Dispatch-*.dmg
 
   # ── GitHub Release ──────────────────────────────────────────────────────────
   release:
@@ -184,7 +184,7 @@ jobs:
       - name: Create release and upload assets
         uses: softprops/action-gh-release@v2.2.1
         with:
-          name: "OSCApp ${{ github.ref_name }}"
+          name: "Dispatch ${{ github.ref_name }}"
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}  # v1.0.0-beta → pre-release
           files: |
@@ -193,11 +193,11 @@ jobs:
           body: |
             ## Install
 
-            **macOS** — download the `.dmg`, open it, drag OSCApp to Applications.
+            **macOS** — download the `.dmg`, open it, drag Dispatch to Applications.
             > First launch: right-click → Open to bypass Gatekeeper.
 
             **Linux** — download the `.AppImage`, then:
             ```bash
-            chmod +x OSCApp-*.AppImage
-            ./OSCApp-*.AppImage
+            chmod +x Dispatch-*.AppImage
+            ./Dispatch-*.AppImage
             ```
