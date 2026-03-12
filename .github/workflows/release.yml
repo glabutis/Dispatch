@@ -1,0 +1,203 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"   # triggers on v0.1.0, v1.2.3, etc.
+
+permissions:
+  contents: write  # needed to create the GitHub Release and upload assets
+
+jobs:
+
+  # ── Linux AppImage ──────────────────────────────────────────────────────────
+  build-linux:
+    name: Build Linux AppImage
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-keysyms1 \
+            libxcb-shape0 \
+            libxcb-xinerama0 \
+            libxkbcommon-x11-0 \
+            libglib2.0-0 \
+            libdbus-1-3 \
+            fuse \
+            libfuse2
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller \
+            --name OSCApp \
+            --noconfirm \
+            --onedir \
+            --collect-all PySide6 \
+            --icon assets/icon.png \
+            main.py
+
+      - name: Download appimagetool
+        run: |
+          mkdir -p .build-tools
+          curl -fsSL -o .build-tools/appimagetool \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x .build-tools/appimagetool
+
+      - name: Assemble AppDir
+        run: |
+          APPDIR="dist/OSCApp.AppDir"
+          mkdir -p "$APPDIR/usr/bin"
+          cp -r dist/OSCApp/. "$APPDIR/usr/bin/"
+
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/usr/bin/env bash
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/OSCApp" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          cat > "$APPDIR/OSCApp.desktop" <<EOF
+          [Desktop Entry]
+          Name=OSCApp
+          Exec=OSCApp
+          Icon=OSCApp
+          Type=Application
+          Categories=Utility;
+          Comment=Map slide remote keystrokes to OSC commands
+          EOF
+
+          cp assets/icon.png "$APPDIR/OSCApp.png"
+
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          .build-tools/appimagetool dist/OSCApp.AppDir "dist/OSCApp-${VERSION}-x86_64.AppImage"
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist/OSCApp-*.AppImage
+
+  # ── macOS DMG ───────────────────────────────────────────────────────────────
+  build-macos:
+    name: Build macOS DMG
+    runs-on: macos-14   # Apple Silicon runner
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Generate .icns icon
+        run: |
+          iconutil -c icns assets/OSCApp.iconset -o assets/icon.icns
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller \
+            --name OSCApp \
+            --noconfirm \
+            --onedir \
+            --windowed \
+            --osx-bundle-identifier com.oscapp.OSCApp \
+            --collect-all PySide6 \
+            --icon assets/icon.icns \
+            main.py
+
+      - name: Build DMG
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          create-dmg \
+            --volname "OSCApp" \
+            --volicon "assets/icon.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 128 \
+            --icon "OSCApp.app" 150 185 \
+            --hide-extension "OSCApp.app" \
+            --app-drop-link 450 185 \
+            "dist/OSCApp-${VERSION}.dmg" \
+            "dist/OSCApp.app" \
+          || true  # create-dmg exits non-zero even on success sometimes
+
+          # Fallback to hdiutil if create-dmg didn't produce the file
+          if [[ ! -f "dist/OSCApp-${VERSION}.dmg" ]]; then
+            STAGING=$(mktemp -d)
+            cp -R dist/OSCApp.app "$STAGING/"
+            ln -s /Applications "$STAGING/Applications"
+            hdiutil create \
+              -volname "OSCApp" \
+              -srcfolder "$STAGING" \
+              -ov -format UDZO \
+              "dist/OSCApp-${VERSION}.dmg"
+          fi
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/OSCApp-*.dmg
+
+  # ── GitHub Release ──────────────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "OSCApp ${{ github.ref_name }}"
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}  # v1.0.0-beta → pre-release
+          files: |
+            artifacts/linux-appimage/*.AppImage
+            artifacts/macos-dmg/*.dmg
+          body: |
+            ## Install
+
+            **macOS** — download the `.dmg`, open it, drag OSCApp to Applications.
+            > First launch: right-click → Open to bypass Gatekeeper.
+
+            **Linux** — download the `.AppImage`, then:
+            ```bash
+            chmod +x OSCApp-*.AppImage
+            ./OSCApp-*.AppImage
+            ```
