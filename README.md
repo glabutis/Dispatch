@@ -19,6 +19,17 @@ Dispatch runs in the background and listens for global key events from any HID d
 
 ---
 
+## Download
+
+Pre-built binaries for Linux and macOS are available on the [Releases page](https://github.com/glabutis/Dispatch/releases).
+
+| Platform | File |
+|----------|------|
+| macOS | `Dispatch-x.x.x.dmg` — drag to Applications |
+| Linux | `Dispatch-x.x.x-x86_64.AppImage` — `chmod +x` and run |
+
+---
+
 ## Requirements
 
 - Python 3.10+
