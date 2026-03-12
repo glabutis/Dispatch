@@ -65,6 +65,7 @@ pyinstaller \
   --noconfirm \
   --onedir \
   --collect-all PySide6 \
+  --collect-all pynput \
   "${EXTRA_ARGS[@]}" \
   "$ENTRY"
 

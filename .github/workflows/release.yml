@@ -57,6 +57,7 @@ jobs:
             --noconfirm \
             --onedir \
             --collect-all PySide6 \
+            --collect-all pynput \
             --icon assets/icon.png \
             main.py
 
@@ -139,6 +140,7 @@ jobs:
             --windowed \
             --osx-bundle-identifier com.dispatch.Dispatch \
             --collect-all PySide6 \
+            --collect-all pynput \
             --icon assets/icon.icns \
             main.py
 
