@@ -10,10 +10,17 @@ permissions:
 
 jobs:
 
-  # ── Linux AppImage ──────────────────────────────────────────────────────────
+  # ── Linux AppImage (x86_64 + aarch64) ───────────────────────────────────────
   build-linux:
-    name: Build Linux AppImage
-    runs-on: ubuntu-22.04
+    name: Build Linux AppImage (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
 
     steps:
       - uses: actions/checkout@v4.2.2
@@ -57,7 +64,7 @@ jobs:
         run: |
           mkdir -p .build-tools
           curl -fsSL -o .build-tools/appimagetool \
-            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${{ matrix.arch }}.AppImage
           chmod +x .build-tools/appimagetool
 
       - name: Assemble AppDir
@@ -90,13 +97,13 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          .build-tools/appimagetool dist/Dispatch.AppDir "dist/Dispatch-${VERSION}-x86_64.AppImage"
+          .build-tools/appimagetool dist/Dispatch.AppDir "dist/Dispatch-${VERSION}-${{ matrix.arch }}.AppImage"
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4.6.0
         with:
-          name: linux-appimage
-          path: dist/Dispatch-*.AppImage
+          name: linux-appimage-${{ matrix.arch }}
+          path: dist/Dispatch-*-${{ matrix.arch }}.AppImage
 
   # ── macOS DMG ───────────────────────────────────────────────────────────────
   build-macos:
@@ -188,7 +195,8 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}  # v1.0.0-beta → pre-release
           files: |
-            artifacts/linux-appimage/*.AppImage
+            artifacts/linux-appimage-x86_64/*.AppImage
+            artifacts/linux-appimage-aarch64/*.AppImage
             artifacts/macos-dmg/*.dmg
           body: |
             ## Install
@@ -196,7 +204,7 @@ jobs:
             **macOS** — download the `.dmg`, open it, drag Dispatch to Applications.
             > First launch: right-click → Open to bypass Gatekeeper.
 
-            **Linux** — download the `.AppImage`, then:
+            **Linux** — download the `.AppImage` for your architecture, then:
             ```bash
             chmod +x Dispatch-*.AppImage
             ./Dispatch-*.AppImage
