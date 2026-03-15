@@ -64,8 +64,8 @@ class MainWindow(QMainWindow):
         self._banner_timer.setSingleShot(True)
         self._banner_timer.timeout.connect(self._hide_banner)
 
-        # Toggle state per mapping id (not persisted — cleared on profile switch)
-        self._toggle_states: dict[str, bool] = {}
+        # Toggle state — aliased to config.toggle_states so saves are automatic
+        self._toggle_states = config.toggle_states
 
         # One OSCSender per destination id
         self._osc_senders: dict[str, OSCSender] = {}
@@ -132,6 +132,7 @@ class MainWindow(QMainWindow):
                 else:
                     address, args = mapping.osc_address, mapping.osc_args
                 self._toggle_states[mapping.id] = not state
+                self.config.save()
             else:
                 address, args = mapping.osc_address, mapping.osc_args
             self._fire_osc(mapping, address, args)

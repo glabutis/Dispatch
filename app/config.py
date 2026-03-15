@@ -107,6 +107,7 @@ class AppConfig:
     profiles: List[Profile] = field(default_factory=lambda: [Profile.new()])
     templates: List[Template] = field(default_factory=list)
     active_profile_id: str = ""
+    toggle_states: dict = field(default_factory=dict)  # mapping_id -> bool, persisted
 
     def __post_init__(self) -> None:
         if not self.active_profile_id and self.profiles:
@@ -134,6 +135,7 @@ class AppConfig:
             ],
             "templates": [asdict(t) for t in self.templates],
             "active_profile_id": self.active_profile_id,
+            "toggle_states": self.toggle_states,
         }
         with open(CONFIG_FILE, "w") as f:
             json.dump(data, f, indent=2)
@@ -185,12 +187,23 @@ class AppConfig:
             if not active_profile_id or not any(p.id == active_profile_id for p in profiles):
                 active_profile_id = profiles[0].id
 
+            # Load toggle states; prune IDs that no longer belong to a toggle-mode mapping
+            toggle_mapping_ids = {
+                m.id for p in profiles for m in p.mappings if m.toggle_mode
+            }
+            raw_ts = data.get("toggle_states", {})
+            toggle_states = {
+                k: bool(v) for k, v in raw_ts.items()
+                if isinstance(k, str) and k in toggle_mapping_ids
+            }
+
             return cls(
                 destinations=destinations,
                 settings=settings,
                 profiles=profiles,
                 templates=templates,
                 active_profile_id=active_profile_id,
+                toggle_states=toggle_states,
             )
         except Exception:
             return cls()
