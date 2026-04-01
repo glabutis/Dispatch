@@ -115,6 +115,24 @@ class SettingsDialog(QDialog):
             note_lbl.setWordWrap(True)
             note_layout.addWidget(note_lbl)
             root.addWidget(note_frame)
+        elif sys.platform == "darwin":
+            note_frame = QFrame()
+            note_frame.setObjectName("dialogPanel")
+            note_layout = QVBoxLayout(note_frame)
+            note_layout.setContentsMargins(14, 12, 14, 12)
+            note_lbl = QLabel(
+                "Dispatch requires two macOS permissions for global key capture:\n\n"
+                "  •  System Settings → Privacy & Security → Accessibility\n"
+                "  •  System Settings → Privacy & Security → Input Monitoring\n\n"
+                "Enable Dispatch in both, then restart the app.\n\n"
+                "Note: some remote buttons (such as the Spotlight highlight button) "
+                "send hardware signals rather than keyboard events and cannot be "
+                "captured by any keyboard listener."
+            )
+            note_lbl.setObjectName("warningLabel")
+            note_lbl.setWordWrap(True)
+            note_layout.addWidget(note_lbl)
+            root.addWidget(note_frame)
 
         root.addStretch()
 

@@ -1,6 +1,12 @@
 """Dialog for creating or editing an OSC destination."""
 
+import re
+
 from PySide6.QtGui import QIntValidator
+
+# Allows IPv4, IPv6 (with brackets), and hostnames. Rejects control characters,
+# whitespace, and shell-special characters that have no place in a host field.
+_VALID_HOST_RE = re.compile(r'^[A-Za-z0-9._:\[\]-]+$')
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -28,7 +34,8 @@ class DestinationDialog(QDialog):
     def get_destination(self) -> OSCDestination:
         d = self._destination.copy()
         d.name = self._name_edit.text().strip() or "Unnamed"
-        d.host = self._host_edit.text().strip() or "127.0.0.1"
+        host = self._host_edit.text().strip()
+        d.host = host if host and _VALID_HOST_RE.match(host) else "127.0.0.1"
         try:
             d.port = int(self._port_edit.text())
         except ValueError:
@@ -89,7 +96,8 @@ class DestinationDialog(QDialog):
         self._enabled_cb.setChecked(destination.enabled)
 
     def _send_test(self) -> None:
-        host = self._host_edit.text().strip() or "127.0.0.1"
+        raw = self._host_edit.text().strip()
+        host = raw if raw and _VALID_HOST_RE.match(raw) else "127.0.0.1"
         try:
             port = int(self._port_edit.text())
         except ValueError:
@@ -105,8 +113,11 @@ class DestinationDialog(QDialog):
         errors = []
         if not self._name_edit.text().strip():
             errors.append("Name is required.")
-        if not self._host_edit.text().strip():
+        host = self._host_edit.text().strip()
+        if not host:
             errors.append("Host is required.")
+        elif not _VALID_HOST_RE.match(host):
+            errors.append("Host contains invalid characters.")
         if not self._port_edit.text().strip():
             errors.append("Port is required.")
         if errors:

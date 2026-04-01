@@ -42,6 +42,30 @@ from .templates_tab import TemplatesTab
 from .theme import get_stylesheet
 
 
+def _check_input_monitoring() -> bool:
+    """Return True if Input Monitoring permission is granted on macOS.
+
+    Uses CGPreflightListenEventAccess (available macOS 10.15+).
+    Returns True on non-macOS platforms or when the check cannot be performed,
+    so callers only need to handle the False case.
+    """
+    if sys.platform != "darwin":
+        return True
+    try:
+        import ctypes, ctypes.util
+        lib_path = ctypes.util.find_library("ApplicationServices")
+        if not lib_path:
+            return True
+        lib = ctypes.cdll.LoadLibrary(lib_path)
+        fn = getattr(lib, "CGPreflightListenEventAccess", None)
+        if fn is None:
+            return True  # Pre-10.15 macOS — Input Monitoring not required
+        fn.restype = ctypes.c_bool
+        return bool(fn())
+    except Exception:
+        return True  # Cannot check — avoid false warning
+
+
 class _ListenerBridge(QObject):
     """
     Bridges pynput's background thread to Qt signals.
@@ -182,6 +206,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._make_header())
         layout.addWidget(self._make_profile_bar())
         layout.addWidget(self._make_destinations_section())
+        layout.addWidget(self._make_permission_banner())
         layout.addWidget(self._make_notification_banner())
         layout.addWidget(self._make_tabs(), 1)
         self._log_panel = self._make_log_panel()
@@ -532,6 +557,40 @@ class MainWindow(QMainWindow):
         """Update the OSCSender reference in the templates tab."""
         if hasattr(self, "_templates_tab"):
             self._templates_tab.update_osc(self._primary_sender)
+
+    # ── Permission banner (persistent, macOS) ────────────────────────────────
+
+    def _make_permission_banner(self) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("permissionBannerFrame")
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setSpacing(12)
+
+        lbl = QLabel(
+            "⚠  Global key capture requires Input Monitoring permission.  "
+            "Open System Settings → Privacy & Security → Input Monitoring, "
+            "enable Dispatch, then restart the app."
+        )
+        lbl.setObjectName("permissionBannerText")
+        lbl.setWordWrap(True)
+        layout.addWidget(lbl, 1)
+
+        dismiss_btn = QPushButton("✕")
+        dismiss_btn.setObjectName("deleteButton")
+        dismiss_btn.setFixedSize(20, 20)
+        dismiss_btn.clicked.connect(self._dismiss_permission_banner)
+        layout.addWidget(dismiss_btn)
+
+        frame.setVisible(False)
+        self._perm_banner_frame = frame
+        return frame
+
+    def _show_permission_banner(self) -> None:
+        self._perm_banner_frame.setVisible(True)
+
+    def _dismiss_permission_banner(self) -> None:
+        self._perm_banner_frame.setVisible(False)
 
     # ── Notification banner ───────────────────────────────────────────────────
 
@@ -978,15 +1037,30 @@ class MainWindow(QMainWindow):
             self._listener.start()
         except Exception as exc:
             self._listener_dot.setObjectName("listenerDotInactive")
+            self._listener_dot.style().unpolish(self._listener_dot)
+            self._listener_dot.style().polish(self._listener_dot)
             self._listener_lbl.setText(f"Listener error: {exc}")
             if sys.platform == "darwin":
                 QMessageBox.warning(
                     self,
-                    "Accessibility Permission Required",
-                    "Dispatch needs Accessibility access to capture global key events.\n\n"
-                    "Open System Settings → Privacy & Security → Accessibility\n"
-                    "and enable Dispatch.",
+                    "Permissions Required",
+                    "Dispatch needs permission to capture global key events.\n\n"
+                    "Open System Settings → Privacy & Security and enable Dispatch in:\n"
+                    "  • Accessibility\n"
+                    "  • Input Monitoring\n\n"
+                    "Restart the app after enabling either permission.",
                 )
+            return
+
+        # Listener started without error — on macOS, verify Input Monitoring is
+        # actually granted. The event tap can be created silently without it but
+        # will receive no events globally.
+        if sys.platform == "darwin" and not _check_input_monitoring():
+            self._listener_dot.setObjectName("listenerDotInactive")
+            self._listener_dot.style().unpolish(self._listener_dot)
+            self._listener_dot.style().polish(self._listener_dot)
+            self._listener_lbl.setText("Input Monitoring permission required")
+            self._show_permission_banner()
 
     # ── Status helper ─────────────────────────────────────────────────────────
 

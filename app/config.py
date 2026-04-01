@@ -1,8 +1,11 @@
 import json
+import logging
 import os
 import uuid
 from dataclasses import asdict, dataclass, field
 from typing import List, Optional
+
+_log = logging.getLogger(__name__)
 
 CONFIG_DIR = os.path.expanduser("~/.config/dispatch")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
@@ -122,6 +125,7 @@ class AppConfig:
 
     def save(self) -> None:
         os.makedirs(CONFIG_DIR, exist_ok=True)
+        os.chmod(CONFIG_DIR, 0o700)
         data = {
             "destinations": [asdict(d) for d in self.destinations],
             "settings": asdict(self.settings),
@@ -139,6 +143,7 @@ class AppConfig:
         }
         with open(CONFIG_FILE, "w") as f:
             json.dump(data, f, indent=2)
+        os.chmod(CONFIG_FILE, 0o600)
 
     @classmethod
     def load_default(cls) -> "AppConfig":
@@ -205,7 +210,11 @@ class AppConfig:
                 active_profile_id=active_profile_id,
                 toggle_states=toggle_states,
             )
-        except Exception:
+        except json.JSONDecodeError as exc:
+            _log.warning("Config file is corrupted (%s); starting with defaults.", exc)
+            return cls()
+        except Exception as exc:
+            _log.warning("Config file failed to load (%s); starting with defaults.", exc)
             return cls()
 
 

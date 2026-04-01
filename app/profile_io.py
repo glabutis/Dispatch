@@ -42,9 +42,10 @@ def import_profile(data: dict, existing_templates: List[Template]) -> Tuple[Prof
     for t in data.get("templates", []):
         if t.get("id") not in existing_ids:
             try:
-                new_templates.append(
-                    Template(**{k: v for k, v in t.items() if k in Template.__dataclass_fields__})
-                )
+                sanitized = {k: v for k, v in t.items() if k in Template.__dataclass_fields__}
+                if isinstance(sanitized.get("label"), str):
+                    sanitized["label"] = sanitized["label"][:256]
+                new_templates.append(Template(**sanitized))
             except Exception as e:
                 raise ValueError(f"Invalid template data: {e}")
 
@@ -54,7 +55,7 @@ def import_profile(data: dict, existing_templates: List[Template]) -> Tuple[Prof
     # Fresh UUID so it never collides with an existing profile
     profile = Profile(
         id=str(uuid.uuid4()),
-        name=raw_profile.get("name", "Imported"),
+        name=str(raw_profile.get("name", "Imported"))[:256],
         mappings=mappings,
     )
 

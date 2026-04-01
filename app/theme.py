@@ -629,6 +629,16 @@ QTabBar::tab:hover:!selected {{
     font-size: 12px;
 }}
 
+/* ─── Permission warning banner ─────────────────── */
+#permissionBannerFrame {{
+    background-color: rgba(249, 226, 175, 0.10);
+    border-bottom: 1px solid rgba(249, 226, 175, 0.25);
+}}
+#permissionBannerText {{
+    color: {C["yellow"]};
+    font-size: 12px;
+}}
+
 /* ─── Template-locked fields ────────────────────── */
 QLineEdit[templateLocked="true"] {{
     color: {C["overlay1"]};

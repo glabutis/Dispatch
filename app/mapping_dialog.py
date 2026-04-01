@@ -135,7 +135,9 @@ class MappingDialog(QDialog):
 
         hint = QLabel(
             "Click Listen, then press any key on your remote. "
-            "Hold for long press detection."
+            "Hold for long press detection. "
+            "Note: some remote buttons (e.g. the Spotlight highlight button) "
+            "send hardware signals rather than keyboard events and cannot be captured."
         )
         hint.setObjectName("hintLabel")
         hint.setWordWrap(True)
@@ -476,6 +478,19 @@ class MappingDialog(QDialog):
 
         self._error_lbl.setVisible(False)
         self.accept()
+
+    def keyPressEvent(self, event) -> None:
+        # While listening, block Qt from acting on Escape (closes dialog) and
+        # Return/Enter (activates the Save button). pynput captures these via
+        # its global X11/Quartz listener independently of Qt's event handling.
+        if self._listening and event.key() in (
+            Qt.Key.Key_Escape,
+            Qt.Key.Key_Return,
+            Qt.Key.Key_Enter,
+        ):
+            event.ignore()
+            return
+        super().keyPressEvent(event)
 
     def reject(self) -> None:
         if self._listening:
