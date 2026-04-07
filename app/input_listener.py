@@ -17,6 +17,12 @@ from pynput import keyboard
 
 from .key_utils import key_to_str
 
+# How long (seconds) to wait after the first captured key before delivering it.
+# Presentation remotes (e.g. Logitech Spotlight) sometimes fire a spurious
+# "forward" event immediately before the intended "back" or "spotlight" button.
+# Waiting a short window and delivering the *last* key seen avoids this.
+_CAPTURE_SETTLE_S = 0.15
+
 
 class InputListener:
     """
@@ -38,6 +44,8 @@ class InputListener:
         self._lock = threading.Lock()
         self._pressed: dict = {}            # key_str -> {time, long_fired, timer}
         self._capture_cb: Optional[Callable] = None
+        self._capture_timer: Optional[threading.Timer] = None
+        self._capture_last_key: Optional[str] = None
         self._running = False
         self._error: Optional[str] = None
 
@@ -86,16 +94,28 @@ class InputListener:
 
     def capture_next_key(self, cb: Callable[[str], None]) -> None:
         """
-        Intercept the very next key press and deliver it to *cb(key_str)*.
-        Normal action processing is bypassed for that one event.
+        Arm capture mode: deliver the last key pressed within a short settle
+        window to *cb(key_str)*.  Normal action processing is bypassed.
+
+        The settle delay (_CAPTURE_SETTLE_S) lets remotes that emit a spurious
+        key before the intended button (e.g. Logitech Spotlight) be handled
+        correctly — only the final key in the burst is delivered.
         """
         with self._lock:
+            if self._capture_timer:
+                self._capture_timer.cancel()
+                self._capture_timer = None
             self._capture_cb = cb
+            self._capture_last_key = None
 
     def cancel_capture(self) -> None:
         """Cancel any pending key-capture request."""
         with self._lock:
             self._capture_cb = None
+            self._capture_last_key = None
+            if self._capture_timer:
+                self._capture_timer.cancel()
+                self._capture_timer = None
 
     @property
     def is_running(self) -> bool:
@@ -109,31 +129,48 @@ class InputListener:
 
     def _on_press(self, key) -> None:
         key_str = key_to_str(key)
+        to_cancel = None
+        to_start = None
 
-        # Capture mode: deliver key and return without normal processing
         with self._lock:
             if self._capture_cb:
-                cb = self._capture_cb
-                self._capture_cb = None
-                try:
-                    cb(key_str)
-                except Exception:
-                    pass
-                return
+                # Settle-delay capture: each new key in the burst resets the
+                # timer and updates the candidate.  After _CAPTURE_SETTLE_S of
+                # silence the last candidate is delivered.
+                to_cancel = self._capture_timer
+                self._capture_last_key = key_str
+                cb = self._capture_cb  # keep ref; cleared inside _deliver
 
-            # Debounce key-repeat: ignore if already tracking this key
-            if key_str in self._pressed:
-                return
+                def _deliver(candidate=key_str):
+                    with self._lock:
+                        if self._capture_last_key != candidate:
+                            return  # a newer key replaced this one
+                        self._capture_cb = None
+                        self._capture_timer = None
+                        self._capture_last_key = None
+                    try:
+                        cb(candidate)
+                    except Exception:
+                        pass
 
-            # Start tracking
-            timer = threading.Timer(self._threshold, self._fire_long, args=[key_str])
-            self._pressed[key_str] = {
-                "time": time.monotonic(),
-                "long_fired": False,
-                "timer": timer,
-            }
+                to_start = threading.Timer(_CAPTURE_SETTLE_S, _deliver)
+                self._capture_timer = to_start
 
-        timer.start()
+            elif key_str in self._pressed:
+                return  # debounce key-repeat
+
+            else:
+                to_start = threading.Timer(self._threshold, self._fire_long, args=[key_str])
+                self._pressed[key_str] = {
+                    "time": time.monotonic(),
+                    "long_fired": False,
+                    "timer": to_start,
+                }
+
+        if to_cancel:
+            to_cancel.cancel()
+        if to_start:
+            to_start.start()
 
     def _on_release(self, key) -> None:
         key_str = key_to_str(key)

@@ -66,6 +66,30 @@ def _check_input_monitoring() -> bool:
         return True  # Cannot check — avoid false warning
 
 
+def _request_input_monitoring() -> None:
+    """Trigger the macOS Input Monitoring permission dialog if not yet granted.
+
+    CGRequestListenEventAccess prompts the user and opens System Settings on
+    first call.  Subsequent calls are no-ops once permission is granted.
+    Safe to call on non-macOS or older macOS where the API is absent.
+    """
+    if sys.platform != "darwin":
+        return
+    try:
+        import ctypes, ctypes.util
+        lib_path = ctypes.util.find_library("ApplicationServices")
+        if not lib_path:
+            return
+        lib = ctypes.cdll.LoadLibrary(lib_path)
+        fn = getattr(lib, "CGRequestListenEventAccess", None)
+        if fn is None:
+            return
+        fn.restype = ctypes.c_bool
+        fn()
+    except Exception:
+        pass
+
+
 class _ListenerBridge(QObject):
     """
     Bridges pynput's background thread to Qt signals.
@@ -569,12 +593,18 @@ class MainWindow(QMainWindow):
 
         lbl = QLabel(
             "⚠  Global key capture requires Input Monitoring permission.  "
-            "Open System Settings → Privacy & Security → Input Monitoring, "
-            "enable Dispatch, then restart the app."
+            "Enable Dispatch in System Settings → Privacy & Security → Input Monitoring, "
+            "then restart the app."
         )
         lbl.setObjectName("permissionBannerText")
         lbl.setWordWrap(True)
         layout.addWidget(lbl, 1)
+
+        open_btn = QPushButton("Open Settings")
+        open_btn.setObjectName("rowButton")
+        open_btn.setFixedWidth(110)
+        open_btn.clicked.connect(self._open_input_monitoring_settings)
+        layout.addWidget(open_btn)
 
         dismiss_btn = QPushButton("✕")
         dismiss_btn.setObjectName("deleteButton")
@@ -591,6 +621,13 @@ class MainWindow(QMainWindow):
 
     def _dismiss_permission_banner(self) -> None:
         self._perm_banner_frame.setVisible(False)
+
+    def _open_input_monitoring_settings(self) -> None:
+        """Open System Settings directly to the Input Monitoring pane."""
+        import subprocess
+        subprocess.Popen(
+            ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"]
+        )
 
     # ── Notification banner ───────────────────────────────────────────────────
 
@@ -1061,6 +1098,7 @@ class MainWindow(QMainWindow):
             self._listener_dot.style().polish(self._listener_dot)
             self._listener_lbl.setText("Input Monitoring permission required")
             self._show_permission_banner()
+            _request_input_monitoring()  # prompt the system permission dialog
 
     # ── Status helper ─────────────────────────────────────────────────────────
 
