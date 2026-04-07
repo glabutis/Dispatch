@@ -25,6 +25,9 @@ def main() -> None:
     app.setApplicationName("Dispatch")
     app.setOrganizationName("Dispatch")
     app.setApplicationDisplayName("Dispatch")
+
+    # Force dark appearance so the native title bar matches the dark theme
+    app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
     icon = QIcon()
     iconset = _ASSETS / "Dispatch.iconset"
     for name in ("icon_16x16.png", "icon_32x32.png", "icon_128x128.png",

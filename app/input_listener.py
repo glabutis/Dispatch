@@ -55,6 +55,9 @@ class InputListener:
         """Set the long-press threshold in milliseconds."""
         self._threshold = max(100, ms) / 1000.0
 
+    def set_mapped_keys(self, keys) -> None:
+        """No-op on non-macOS; pynput cannot intercept system shortcuts."""
+
     def set_action_callback(self, cb: Callable[[str, str], None]) -> None:
         """
         Set callback invoked when a key action is detected.
