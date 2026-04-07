@@ -62,11 +62,13 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### macOS — Accessibility permission
+### macOS — Input Monitoring permission
 
-pynput requires Accessibility access to capture global key events. On first launch macOS will prompt you, or you can grant it manually:
+pynput requires **Input Monitoring** access to capture global key events. On first launch Dispatch will trigger the system permission dialog automatically. You can also grant it manually:
 
-**System Settings → Privacy & Security → Accessibility → enable Dispatch**
+**System Settings → Privacy & Security → Input Monitoring → enable Dispatch**
+
+Restart the app after enabling the permission. If Dispatch appears to be running but keys are not detected, this permission is the most likely cause.
 
 ### Linux — Wayland
 
