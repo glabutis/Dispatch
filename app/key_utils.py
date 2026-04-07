@@ -76,10 +76,38 @@ def str_to_key(s: str):
     return None
 
 
+_MOD_SYMBOLS = {"cmd": "⌘", "ctrl": "⌃", "alt": "⌥", "shift": "⇧"}
+
+
 def key_display(key_str: str) -> str:
-    """Return a human-readable label for a serialized key string."""
+    """Return a human-readable label for a serialized key string.
+
+    Handles modifier prefixes added by CGEventListener, e.g.:
+        "cmd+Key.space"   → "⌘ Space"
+        "cmd+shift+a"     → "⌘⇧ A"
+        "Key.page_down"   → "Page Down"
+    """
     if not key_str:
         return "Not set"
+
+    # Split off any leading modifier tokens (cmd, ctrl, alt, shift)
+    parts = key_str.split("+")
+    mod_icons: list[str] = []
+    base = key_str
+    for i, part in enumerate(parts):
+        if part in _MOD_SYMBOLS:
+            mod_icons.append(_MOD_SYMBOLS[part])
+        else:
+            base = "+".join(parts[i:])
+            break
+
+    prefix = "".join(mod_icons)
+    base_display = _key_display_base(base)
+    return f"{prefix} {base_display}" if prefix else base_display
+
+
+def _key_display_base(key_str: str) -> str:
+    """Display label for a bare key_str (no modifier prefix)."""
     if key_str in _DISPLAY_NAMES:
         return _DISPLAY_NAMES[key_str]
     if key_str.startswith("Key."):

@@ -120,8 +120,16 @@ class MainWindow(QMainWindow):
         for d in config.destinations:
             self._osc_senders[d.id] = OSCSender(d.host, d.port)
 
-        # Keyboard listener
-        self._listener = InputListener()
+        # Keyboard listener — use CGEventTap on macOS (can intercept system
+        # shortcuts like Spotlight), fall back to pynput everywhere else.
+        if sys.platform == "darwin":
+            try:
+                from .cg_event_listener import CGEventListener
+                self._listener = CGEventListener()
+            except Exception:
+                self._listener = InputListener()
+        else:
+            self._listener = InputListener()
         self._listener.set_threshold(config.settings.long_press_threshold_ms)
 
         # Bridge (lives in the main thread; signals are queued automatically)
@@ -131,6 +139,7 @@ class MainWindow(QMainWindow):
         self._listener.set_action_callback(self._listener_action_cb)
 
         self._build_ui()
+        self._sync_mapped_keys()
         self._start_listener()
         self._setup_tray()
 
@@ -154,6 +163,17 @@ class MainWindow(QMainWindow):
     def cancel_key_capture(self) -> None:
         self._listener.cancel_capture()
         self._pending_captures.clear()
+
+    # ── Mapped-key sync ───────────────────────────────────────────────────────
+
+    def _sync_mapped_keys(self) -> None:
+        """Tell the listener which keys Dispatch owns so it can intercept them."""
+        keys = {
+            m.key_str
+            for m in self.config.active_profile.mappings
+            if m.enabled and m.key_str
+        }
+        self._listener.set_mapped_keys(keys)
 
     # ── Private: listener callbacks ──────────────────────────────────────────
 
@@ -408,6 +428,7 @@ class MainWindow(QMainWindow):
         self._rows.clear()
         for m in self.config.active_profile.mappings:
             self._insert_row(m)
+        self._sync_mapped_keys()
 
     # ── Destinations section ──────────────────────────────────────────────────
 
@@ -818,6 +839,7 @@ class MainWindow(QMainWindow):
             self.config.active_profile.mappings.append(updated)
             self._insert_row(updated)
             self.config.save()
+            self._sync_mapped_keys()
 
     def _edit_mapping(self, mapping_id: str) -> None:
         mappings = self.config.active_profile.mappings
@@ -834,6 +856,7 @@ class MainWindow(QMainWindow):
             if mapping_id in self._rows:
                 self._rows[mapping_id].update_mapping(updated)
             self.config.save()
+            self._sync_mapped_keys()
 
     def _delete_mapping(self, mapping_id: str) -> None:
         reply = QMessageBox.question(
@@ -853,6 +876,7 @@ class MainWindow(QMainWindow):
             self._rows_layout.removeWidget(row)
             row.deleteLater()
         self.config.save()
+        self._sync_mapped_keys()
 
     def _toggle_mapping(self, mapping_id: str, enabled: bool) -> None:
         for m in self.config.active_profile.mappings:
@@ -860,6 +884,7 @@ class MainWindow(QMainWindow):
                 m.enabled = enabled
                 break
         self.config.save()
+        self._sync_mapped_keys()
 
     def _duplicate_mapping(self, mapping_id: str) -> None:
         mappings = self.config.active_profile.mappings
@@ -887,6 +912,7 @@ class MainWindow(QMainWindow):
         self._rows_layout.insertWidget(insert_at, row)
         self._rows[dup.id] = row
         self.config.save()
+        self._sync_mapped_keys()
 
     def _test_mapping(self, mapping_id: str) -> None:
         mapping = next(
